@@ -225,15 +225,16 @@
 
 ; pawn-delta: df x color-comb -> (board -> (df . dr))
 ; The rank direction a pawn of the given color attacks from.
-(define (pawn-delta df by-color-comb)
-  (board-compose by-color-comb
-                 (lambda (color) (cons df (if (eq? color 'white) -1 1)))))
+(define (pawn-delta df)
+  (lambda (by-color-comb)
+    (board-compose by-color-comb
+                   (lambda (color) (cons df (if (eq? color 'white) -1 1))))))
 
 ; pawn-attacks-sq?: sq-comb x color-comb -> (board -> bool)
 (define (pawn-attacks-sq? sq-comb by-color-comb)
   (board-or
-    (piece-matches? (piece-at (sq-offset sq-comb (pawn-delta -1 by-color-comb))) by-color-comb pawn?)
-    (piece-matches? (piece-at (sq-offset sq-comb (pawn-delta  1 by-color-comb))) by-color-comb pawn?)))
+    (piece-matches? (piece-at (sq-offset sq-comb ((pawn-delta -1) by-color-comb))) by-color-comb pawn?)
+    (piece-matches? (piece-at (sq-offset sq-comb ((pawn-delta  1) by-color-comb))) by-color-comb pawn?)))
 
 ; attacked-by?: sq-comb x color-comb -> (board -> bool)
 (define (attacked-by? sq-comb by-color-comb)
