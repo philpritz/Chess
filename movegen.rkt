@@ -205,8 +205,9 @@
          piece-combs)))
 
 ; jump-candidates: sq-comb x deltas -> (listof p-comb)
+; Wraps static deltas in board-const so sq-offset receives a delta-comb.
 (define (jump-candidates sq-comb deltas)
-  (map (lambda (d) (piece-at (sq-offset sq-comb d))) deltas))
+  (map (lambda (d) (piece-at (sq-offset sq-comb (board-const d)))) deltas))
 
 ; slider-candidates: sq-comb x dirs -> (listof p-comb)
 (define (slider-candidates sq-comb dirs)
@@ -222,15 +223,17 @@
 (define (bishop-or-queen? p) (and p (or (bishop? p) (queen? p))))
 (define (rook-or-queen?   p) (and p (or (rook? p)   (queen? p))))
 
+; pawn-delta: df x color-comb -> (board -> (df . dr))
+; The rank direction a pawn of the given color attacks from.
+(define (pawn-delta df by-color-comb)
+  (board-compose by-color-comb
+                 (lambda (color) (cons df (if (eq? color 'white) -1 1)))))
+
 ; pawn-attacks-sq?: sq-comb x color-comb -> (board -> bool)
-; Pawn deltas are color-dependent so computed inside the lambda.
 (define (pawn-attacks-sq? sq-comb by-color-comb)
-  (lambda (b)
-    (define by-color (by-color-comb b))
-    (define dir (if (eq? by-color 'white) -1 1))
-    ((any-attacker? (jump-candidates sq-comb (list (cons -1 dir) (cons 1 dir)))
-                    by-color-comb pawn?)
-     b)))
+  (board-or
+    (piece-matches? (piece-at (sq-offset sq-comb (pawn-delta -1 by-color-comb))) by-color-comb pawn?)
+    (piece-matches? (piece-at (sq-offset sq-comb (pawn-delta  1 by-color-comb))) by-color-comb pawn?)))
 
 ; attacked-by?: sq-comb x color-comb -> (board -> bool)
 (define (attacked-by? sq-comb by-color-comb)

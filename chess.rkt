@@ -33,8 +33,7 @@
 (define (square-empty? sq-comb)
   (board-not (piece-at sq-comb)))
 
-(define side-to-move
-  (lambda (b) (board-to-move b)))
+(define side-to-move board-to-move)
 
 (define opp-side
   (board-compose side-to-move opponent))
@@ -42,8 +41,7 @@
 (define in-check?
   (attacked-by? (king-coord side-to-move) opp-side))
 
-(define legal-moves
-  (lambda (b) (generate-legal-moves b)))
+(define legal-moves generate-legal-moves)
 
 (define (moves-from sq-comb)
   (lambda (b)

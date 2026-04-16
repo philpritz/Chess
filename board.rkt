@@ -107,10 +107,11 @@
 
 ; sq-offset: sq-comb x (file-delta . rank-delta) -> (board -> square|#f)
 ; Returns #f when the resulting square is off the board or sq-comb returns #f.
-(define (sq-offset sq-comb delta)
+(define (sq-offset sq-comb delta-comb)
   (lambda (b)
     (define sq (sq-comb b))
-    (and sq
+    (define delta (delta-comb b))
+    (and sq delta
          (let ([s (sq+ sq (car delta) (cdr delta))])
            (and (sq-valid-sq? s) s)))))
 
