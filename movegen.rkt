@@ -1,6 +1,7 @@
 #lang racket/base
 
 (require racket/list
+         racket/vector
          "board.rkt")
 
 (provide generate-legal-moves
@@ -101,12 +102,14 @@
   moves)
 
 (define (knight-moves b from color)
-  (for*/list ([d '((-2 . -1) (-2 . 1) (-1 . -2) (-1 . 2)
-                   (1 . -2) (1 . 2) (2 . -1) (2 . 1))]
-              #:let [sq (sq+ from (car d) (cdr d))]
-              #:when (sq-valid-sq? sq)
-              #:when (not (friendly? b sq color)))
-    (move from sq #f)))
+  (filter-map
+   (lambda (d)
+     (define sq (sq+ from (car d) (cdr d)))
+     (and (sq-valid-sq? sq)
+          (not (friendly? b sq color))
+          (move from sq #f)))
+   '((-2 . -1) (-2 . 1) (-1 . -2) (-1 . 2)
+     (1 . -2) (1 . 2) (2 . -1) (2 . 1))))
 
 (define bishop-dirs '((-1 . -1) (-1 . 1) (1 . -1) (1 . 1)))
 (define rook-dirs   '((-1 . 0) (1 . 0) (0 . -1) (0 . 1)))
@@ -117,13 +120,15 @@
 (define (queen-moves  b from color) (sliding-moves b from color queen-dirs))
 
 (define (king-normal-moves b from color)
-  (for*/list ([df '(-1 0 1)]
-              [dr '(-1 0 1)]
-              #:when (not (and (= df 0) (= dr 0)))
-              #:let [sq (sq+ from df dr)]
-              #:when (sq-valid-sq? sq)
-              #:when (not (friendly? b sq color)))
-    (move from sq #f)))
+  (filter-map
+   (lambda (d)
+     (define sq (sq+ from (car d) (cdr d)))
+     (and (sq-valid-sq? sq)
+          (not (friendly? b sq color))
+          (move from sq #f)))
+   (for*/list ([df '(-1 0 1)] [dr '(-1 0 1)]
+               #:when (not (and (= df 0) (= dr 0))))
+     (cons df dr))))
 
 ;;; ---------- Castling ----------
 
@@ -172,13 +177,13 @@
 
 (define (generate-pseudo-legal-moves b)
   (define color (board-to-move b))
+  (define squares (board-squares b))
   (for*/list ([i (in-range 64)]
-              #:let [p (vector-ref (board-squares b) i)]
-              #:when (and p (eq? (piece-color p) color))
-              [m (in-list (moves-for-piece b (idx->sq i) p))])
+              #:when (let ([p (vector-ref squares i)])
+                       (and p (eq? (piece-color p) color)))
+              [m (in-list (moves-for-piece b (idx->sq i)
+                                          (vector-ref squares i)))])
     m))
-
-(define (idx->sq i) (square (remainder i 8) (quotient i 8)))
 
 ;;; ---------- Attack detection ----------
 
@@ -323,8 +328,8 @@
 
 (define (generate-legal-moves b)
   (define color (board-to-move b))
-  (for/list ([m (in-list (generate-pseudo-legal-moves b))]
-             #:when (not (castling-through-check? b m color))
-             #:let [b2 (make-move b m)]
-             #:when (not (king-attacked? b2 color)))
-    m))
+  (filter
+   (lambda (m)
+     (and (not (castling-through-check? b m color))
+          (not (king-attacked? (make-move b m) color))))
+   (generate-pseudo-legal-moves b)))

@@ -74,9 +74,11 @@
 (check-false (pawn? #f))
 (check-false (white? #f))
 
-;;; check-board: escape moves should be non-empty
+;;; check-board is checkmate: in-check? true, no legal moves
+(check-true  (in-check? check-board))
+(check-equal? (length (legal-moves check-board)) 0)
 (define escapes ((board-if in-check? legal-moves (board-const '())) check-board))
-(check-true (pair? escapes))
+(check-equal? escapes '())
 
 ;;; stalemate check (synthetic: king alone, no moves)
 (define stalemate-board (fen->board "k7/8/1Q6/8/8/8/8/7K b - - 0 1"))

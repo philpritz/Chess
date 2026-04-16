@@ -15,6 +15,8 @@
          sq->alg
          ->square
          find-king
+         sq->idx
+         idx->sq
          fen->board
          starting-board
          opponent)
@@ -129,11 +131,12 @@
          (set! file-idx (+ file-idx 1))])))
 
   ; Castling rights
+  (define (has-char? s c) (regexp-match? (regexp-quote c) s))
   (define cr
-    (castling-rights (string-contains castle-str "K")
-                     (string-contains castle-str "Q")
-                     (string-contains castle-str "k")
-                     (string-contains castle-str "q")))
+    (castling-rights (has-char? castle-str "K")
+                     (has-char? castle-str "Q")
+                     (has-char? castle-str "k")
+                     (has-char? castle-str "q")))
 
   ; En passant square
   (define ep (if (string=? ep-str "-") #f (alg->sq (string->symbol ep-str))))
