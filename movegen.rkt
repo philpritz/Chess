@@ -2,23 +2,14 @@
 
 (require racket/list
          racket/vector
-         "board.rkt")
+         "board.rkt"
+         "combinators.rkt")
 
 (provide generate-legal-moves
          generate-pseudo-legal-moves
          king-attacked?
+         attacked-by?
          make-move)
-
-;;; ---------- Utilities ----------
-
-(define (sq-valid? file rank)
-  (and (>= file 0) (< file 8) (>= rank 0) (< rank 8)))
-
-(define (sq-valid-sq? sq)
-  (sq-valid? (square-file sq) (square-rank sq)))
-
-(define (sq+ sq df dr)
-  (square (+ (square-file sq) df) (+ (square-rank sq) dr)))
 
 (define (piece-at-sq b sq)
   (and (sq-valid-sq? sq) (board-ref b sq)))
@@ -185,55 +176,74 @@
                                           (vector-ref squares i)))])
     m))
 
-;;; ---------- Attack detection ----------
+;;; ---------- Attack detection (combinator-based) ----------
 
-(define (square-attacked? b sq by-color)
-  ; Is sq attacked by any piece of by-color?
-  (define (attacked-by-sliders? dirs piece-types)
-    (for/or ([d dirs])
-      (let loop ([s (sq+ sq (car d) (cdr d))])
-        (and (sq-valid-sq? s)
-             (let ([p (board-ref b s)])
-               (cond
-                 [(not p) (loop (sq+ s (car d) (cdr d)))]
-                 [(and (eq? (piece-color p) by-color)
-                       (member (piece-type p) piece-types)) #t]
-                 [else #f]))))))
+; ray-first-piece: sq-comb x dir -> (board -> piece|#f)
+; Slides from sq in dir, returning the first piece hit or #f.
+; This is the only primitive with a loop — everything above composes it.
+(define (ray-first-piece sq-comb dir)
+  (lambda (b)
+    (define start (sq-comb b))
+    (and start
+         (let loop ([s (sq+ start (car dir) (cdr dir))])
+           (and (sq-valid-sq? s)
+                (or (board-ref b s)
+                    (loop (sq+ s (car dir) (cdr dir)))))))))
 
-  (or
-   ; Pawn attacks
-   (let ([pawn-dir (if (eq? by-color 'white) -1 1)])
-     (for/or ([df '(-1 1)])
-       (let ([s (sq+ sq df pawn-dir)])
-         (and (sq-valid-sq? s)
-              (let ([p (board-ref b s)])
-                (and p (eq? (piece-color p) by-color)
-                     (eq? (piece-type p) 'pawn)))))))
-   ; Knight attacks
-   (for/or ([d '((-2 . -1) (-2 . 1) (-1 . -2) (-1 . 2)
-                 (1 . -2) (1 . 2) (2 . -1) (2 . 1))])
-     (let ([s (sq+ sq (car d) (cdr d))])
-       (and (sq-valid-sq? s)
-            (let ([p (board-ref b s)])
-              (and p (eq? (piece-color p) by-color)
-                   (eq? (piece-type p) 'knight))))))
-   ; Bishop/Queen diagonals
-   (attacked-by-sliders? bishop-dirs '(bishop queen))
-   ; Rook/Queen straights
-   (attacked-by-sliders? rook-dirs   '(rook queen))
-   ; King
-   (for/or ([df '(-1 0 1)]
-            [dr '(-1 0 1)]
-            #:when (not (and (= df 0) (= dr 0))))
-     (let ([s (sq+ sq df dr)])
-       (and (sq-valid-sq? s)
-            (let ([p (board-ref b s)])
-              (and p (eq? (piece-color p) by-color)
-                   (eq? (piece-type p) 'king))))))))
+; piece-matches?: p-comb x color-comb x piece-pred -> (board -> bool)
+; Checks that p-comb yields a piece of the right color and type.
+(define (piece-matches? p-comb by-color-comb piece-pred)
+  (board-and
+    p-comb
+    (board-equal? (board-compose p-comb piece-color) by-color-comb)
+    (board-compose p-comb piece-pred)))
+
+; any-attacker?: (listof p-comb) x color-comb x piece-pred -> (board -> bool)
+(define (any-attacker? piece-combs by-color-comb piece-pred)
+  (apply board-or
+    (map (lambda (pc) (piece-matches? pc by-color-comb piece-pred))
+         piece-combs)))
+
+; jump-candidates: sq-comb x deltas -> (listof p-comb)
+(define (jump-candidates sq-comb deltas)
+  (map (lambda (d) (piece-at (sq-offset sq-comb d))) deltas))
+
+; slider-candidates: sq-comb x dirs -> (listof p-comb)
+(define (slider-candidates sq-comb dirs)
+  (map (lambda (d) (ray-first-piece sq-comb d)) dirs))
+
+(define knight-deltas '((-2 . -1) (-2 . 1) (-1 . -2) (-1 . 2)
+                         (1 . -2) (1 . 2) (2 . -1) (2 . 1)))
+(define king-deltas
+  (for*/list ([df '(-1 0 1)] [dr '(-1 0 1)]
+              #:when (not (and (= df 0) (= dr 0))))
+    (cons df dr)))
+
+(define (bishop-or-queen? p) (and p (or (bishop? p) (queen? p))))
+(define (rook-or-queen?   p) (and p (or (rook? p)   (queen? p))))
+
+; pawn-attacks-sq?: sq-comb x color-comb -> (board -> bool)
+; Pawn deltas are color-dependent so computed inside the lambda.
+(define (pawn-attacks-sq? sq-comb by-color-comb)
+  (lambda (b)
+    (define by-color (by-color-comb b))
+    (define dir (if (eq? by-color 'white) -1 1))
+    ((any-attacker? (jump-candidates sq-comb (list (cons -1 dir) (cons 1 dir)))
+                    by-color-comb pawn?)
+     b)))
+
+; attacked-by?: sq-comb x color-comb -> (board -> bool)
+(define (attacked-by? sq-comb by-color-comb)
+  (board-or
+    (pawn-attacks-sq?   sq-comb by-color-comb)
+    (any-attacker? (jump-candidates   sq-comb knight-deltas) by-color-comb knight?)
+    (any-attacker? (slider-candidates sq-comb bishop-dirs)   by-color-comb bishop-or-queen?)
+    (any-attacker? (slider-candidates sq-comb rook-dirs)     by-color-comb rook-or-queen?)
+    (any-attacker? (jump-candidates   sq-comb king-deltas)   by-color-comb king-piece?)))
 
 (define (king-attacked? b color)
   (define ksq (find-king b color))
-  (and ksq (square-attacked? b ksq (opponent color))))
+  (and ksq ((attacked-by? (board-const ksq) (board-const (opponent color))) b)))
 
 ;;; ---------- make-move ----------
 
@@ -316,15 +326,15 @@
 ;;; ---------- Legal move generation ----------
 
 (define (castling-through-check? b m color)
-  ; For castling moves, verify king does not pass through an attacked square.
   (define from (move-from m))
   (define to   (move-to   m))
   (and (eq? (piece-type (board-ref b from)) 'king)
        (= (abs (- (square-file to) (square-file from))) 2)
        (let* ([step (if (> (square-file to) (square-file from)) 1 -1)]
-              [pass (square (+ (square-file from) step) (square-rank from))])
-         (or (square-attacked? b from (opponent color))
-             (square-attacked? b pass (opponent color))))))
+              [pass (square (+ (square-file from) step) (square-rank from))]
+              [opp  (board-const (opponent color))])
+         (or ((attacked-by? (board-const from) opp) b)
+             ((attacked-by? (board-const pass) opp) b)))))
 
 (define (generate-legal-moves b)
   (define color (board-to-move b))

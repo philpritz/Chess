@@ -2,7 +2,9 @@
 
 (require "board.rkt")
 
-(provide board-if
+(provide board-lift2
+         board-equal?
+         board-if
          board-if/strict
          board-and
          board-or
@@ -59,6 +61,15 @@
 
 (define (board-not comb)
   (lambda (b) (not (comb b))))
+
+;;; ---------- Binary lifting ----------
+
+(define (board-lift2 f comb1 comb2)
+  ; Applies f to the results of two combinators on the same board.
+  (lambda (b) (f (comb1 b) (comb2 b))))
+
+(define (board-equal? comb1 comb2)
+  (board-lift2 equal? comb1 comb2))
 
 ;;; ---------- Value plumbing ----------
 

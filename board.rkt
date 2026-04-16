@@ -17,9 +17,15 @@
          find-king
          sq->idx
          idx->sq
+         sq+
+         sq-valid?
+         sq-valid-sq?
+         sq-offset
+         piece-at
          fen->board
          starting-board
-         opponent)
+         opponent
+         pawn? rook? knight? bishop? queen? king-piece? white? black?)
 
 ;;; ---------- Piece ----------
 
@@ -88,10 +94,50 @@
   (vector-set! new-vec (sq->idx sq) piece-or-false)
   (struct-copy board b [squares new-vec]))
 
+;;; ---------- Square helpers ----------
+
+(define (sq+ sq df dr)
+  (square (+ (square-file sq) df) (+ (square-rank sq) dr)))
+
+(define (sq-valid? file rank)
+  (and (>= file 0) (< file 8) (>= rank 0) (< rank 8)))
+
+(define (sq-valid-sq? sq)
+  (sq-valid? (square-file sq) (square-rank sq)))
+
+; sq-offset: sq-comb x (file-delta . rank-delta) -> (board -> square|#f)
+; Returns #f when the resulting square is off the board or sq-comb returns #f.
+(define (sq-offset sq-comb delta)
+  (lambda (b)
+    (define sq (sq-comb b))
+    (and sq
+         (let ([s (sq+ sq (car delta) (cdr delta))])
+           (and (sq-valid-sq? s) s)))))
+
 ;;; ---------- Helpers ----------
 
 (define (opponent color)
   (if (eq? color 'white) 'black 'white))
+
+;;; ---------- piece-at combinator ----------
+
+; piece-at: sq-comb -> (board -> piece|#f)
+; The fundamental "what's at this square?" combinator.
+(define (piece-at sq-comb)
+  (lambda (b)
+    (define sq (sq-comb b))
+    (and sq (board-ref b sq))))
+
+;;; ---------- Piece predicates ----------
+
+(define (pawn?       p) (and (piece? p) (eq? (piece-type p) 'pawn)))
+(define (rook?       p) (and (piece? p) (eq? (piece-type p) 'rook)))
+(define (knight?     p) (and (piece? p) (eq? (piece-type p) 'knight)))
+(define (bishop?     p) (and (piece? p) (eq? (piece-type p) 'bishop)))
+(define (queen?      p) (and (piece? p) (eq? (piece-type p) 'queen)))
+(define (king-piece? p) (and (piece? p) (eq? (piece-type p) 'king)))
+(define (white?      p) (and (piece? p) (eq? (piece-color p) 'white)))
+(define (black?      p) (and (piece? p) (eq? (piece-color p) 'black)))
 
 (define (find-king b color)
   (define squares (board-squares b))
